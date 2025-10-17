@@ -1,6 +1,6 @@
 from flask import Flask, render_template
 from flask_socketio import SocketIO
-from flask_ngrok import run_with_ngrok  # <--- 1. TAMBAHKAN IMPORT INI
+from flask_ngrok import run_with_ngrok
 import threading
 import base64
 import numpy as np
@@ -8,17 +8,18 @@ from ultralytics import YOLO
 from stream_processor import process_stream
 
 app = Flask(__name__)
-run_with_ngrok(app)  # <--- 2. TAMBAHKAN BARIS INI
-socketio = SocketIO(app, async_mode='threading')
+run_with_ngrok(app)
+
+# --- PERBAIKAN DI SINI ---
+# Hapus async_mode='threading' agar SocketIO bisa auto-detect eventlet
+socketio = SocketIO(app)
+# -------------------------
 
 # --- Variabel Global ---
-# Dictionary untuk menyimpan frame terakhir dari setiap thread
 output_frames = {}
-# Kunci (lock) untuk memastikan thread-safe saat mengakses output_frames
 lock = threading.Lock()
 
 # --- Konfigurasi Stream ---
-# Tempatkan semua informasi unik untuk setiap stream di sini
 STREAMS_CONFIG = [
     {
         "id": "cctv_1",
@@ -34,23 +35,17 @@ STREAMS_CONFIG = [
         "poly_right": np.array([[1270, 253], [3, 708], [1271, 706], [1271, 254]], np.int32),
         "poly_left": np.array([[0, 698], [714, 425], [649, 131], [0, 242], [0, 700]], np.int32)
     }
-    # Tambahkan stream lain di sini jika perlu
 ]
 
 # --- Rute Flask ---
 @app.route('/')
 def index():
-    # BUAT VERSI KONFIGURASI YANG AMAN UNTUK JSON
     streams_for_template = []
     for stream in STREAMS_CONFIG:
-        # Salin kamus asli
         stream_copy = stream.copy()
-        # Ubah array NumPy menjadi list Python biasa
         stream_copy['poly_right'] = stream_copy['poly_right'].tolist()
         stream_copy['poly_left'] = stream_copy['poly_left'].tolist()
         streams_for_template.append(stream_copy)
-        
-    # Kirim versi yang sudah aman ke template
     return render_template('index.html', streams=streams_for_template)
 
 # --- Logika SocketIO ---
@@ -63,11 +58,10 @@ def frame_generator():
     while True:
         with lock:
             for stream_id, frame_bytes in output_frames.items():
-                # Encode frame ke base64 untuk dikirim via JSON
-                b64_frame = base64.b64encode(frame_bytes).decode('utf-8')
-                socketio.emit('update_frame', {'id': stream_id, 'image': b64_frame})
-        # Atur FPS yang dikirim ke frontend, jangan terlalu cepat
-        socketio.sleep(0.1) 
+                if frame_bytes:
+                    b64_frame = base64.b64encode(frame_bytes).decode('utf-8')
+                    socketio.emit('update_frame', {'id': stream_id, 'image': b64_frame})
+        socketio.sleep(0.1)
 
 if __name__ == '__main__':
     print("Memuat model YOLOv8...")
