@@ -62,7 +62,7 @@ def frame_generator():
 if __name__ == '__main__':
     # Konfigurasi dan mulai Ngrok secara eksplisit
     conf.get_default().region = "ap"  # Set region Asia Pasifik
-    NGROK_AUTHTOKEN = "PASTE_YOUR_AUTHTOKEN_HERE" # <-- GANTI DENGAN TOKEN ANDA
+    NGROK_AUTHTOKEN = "34BWilIxDYdhkyAO3Mer5f57AHN_5FWUuoPb71jL8s1wWcec6" # <-- GANTI DENGAN TOKEN ANDA
     ngrok.set_auth_token(NGROK_AUTHTOKEN)
     public_url = ngrok.connect(5000)
     print(f"✅ Buka dashboard Anda di: {public_url}")
