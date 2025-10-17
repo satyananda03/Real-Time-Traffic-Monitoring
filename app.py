@@ -86,4 +86,5 @@ if __name__ == '__main__':
     socketio.start_background_task(target=frame_generator)
     
     print("Menjalankan server Flask dengan Ngrok...")
-    socketio.run(app) # <--- 3. HAPUS host='0.0.0.0' dan port=5000
+    # Dengan eventlet terinstal, ini akan otomatis menggunakan server yang benar
+    socketio.run(app, log_output=True)
