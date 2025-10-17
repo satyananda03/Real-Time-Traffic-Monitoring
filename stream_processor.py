@@ -4,17 +4,7 @@ import time
 from ultralytics import YOLO
 from utils import get_youtube_live_url
 
-# --- Konfigurasi Firestore (Akan digunakan nanti) ---
-# from google.cloud import firestore
-# db = firestore.Client()
-# collection_ref = db.collection('vehicle_logs')
-# --------------------------------------------------
-
-# Fungsi ini akan dijalankan di setiap thread
 def process_stream(stream_config, model, output_frames, lock):
-    """
-    Memproses satu stream video, melakukan deteksi, dan menyimpan hasilnya.
-    """
     stream_id = stream_config['id']
     youtube_url = stream_config['url']
     polygon_left = stream_config['poly_left']
@@ -33,9 +23,6 @@ def process_stream(stream_config, model, output_frames, lock):
     print(f"[{stream_id}] Stream berhasil dibuka.")
 
     class_names = {2: "Car", 3: "Motorcycle", 5: "Bus", 7: "Truck"}
-    
-    # --- LOGIKA BARU: Melacak ID yang sedang di dalam poligon ---
-    # Ini penting untuk mencatat peristiwa 'masuk' ke Firestore
     ids_inside_right = set()
     ids_inside_left = set()
 
@@ -44,17 +31,15 @@ def process_stream(stream_config, model, output_frames, lock):
         if not ret:
             print(f"[{stream_id}] Frame kosong, mencoba menyambung ulang...")
             cap.release()
-            time.sleep(5) # Jeda sebelum mencoba lagi
+            time.sleep(5)
             cap = cv2.VideoCapture(stream_url)
             continue
             
         annotated_frame = frame.copy()
         
-        # Gambar poligon
         cv2.polylines(annotated_frame, [polygon_right], isClosed=True, color=(0, 255, 0), thickness=2)
         cv2.polylines(annotated_frame, [polygon_left], isClosed=True, color=(0, 255, 255), thickness=2)
 
-        # Lakukan deteksi
         results = model.track(frame, classes=[2, 3, 5, 7], conf=0.4, persist=True, verbose=False, tracker="botsort.yaml")
 
         if results[0].boxes is not None and results[0].boxes.id is not None:
@@ -62,50 +47,43 @@ def process_stream(stream_config, model, output_frames, lock):
             track_ids = boxes.id.astype(int)
             clss = boxes.cls.astype(int)
             xyxy = boxes.xyxy.astype(int)
-
             current_ids_in_frame = set(track_ids)
 
             for track_id, cls_id, bbox in zip(track_ids, clss, xyxy):
                 bottom_center_point = (int((bbox[0] + bbox[2]) // 2), int(bbox[3]))
                 
-                # Cek Poligon Kanan
                 is_in_right = cv2.pointPolygonTest(polygon_right, bottom_center_point, False) >= 0
-                if is_in_right:
-                    if track_id not in ids_inside_right:
-                        ids_inside_right.add(track_id)
-                        # --- DI SINI ANDA AKAN MENGIRIM DATA KE FIRESTORE ---
-                        # print(f"[{stream_id}] MASUK KANAN: ID {track_id}, Tipe: {class_names.get(cls_id)}")
-                        # log_data = {
-                        #     "timestamp": firestore.SERVER_TIMESTAMP,
-                        #     "location_id": stream_id,
-                        #     "vehicle_type": class_names.get(cls_id, "Unknown"),
-                        #     "direction": "right"
-                        # }
-                        # collection_ref.add(log_data)
-                        # ----------------------------------------------------
+                if is_in_right and track_id not in ids_inside_right:
+                    ids_inside_right.add(track_id)
                 
-                # Cek Poligon Kiri
                 is_in_left = cv2.pointPolygonTest(polygon_left, bottom_center_point, False) >= 0
-                if is_in_left:
-                    if track_id not in ids_inside_left:
-                        ids_inside_left.add(track_id)
-                        # --- DI SINI ANDA AKAN MENGIRIM DATA KE FIRESTORE ---
-                        # print(f"[{stream_id}] MASUK KIRI: ID {track_id}, Tipe: {class_names.get(cls_id)}")
-                        # log_data = { ... }
-                        # collection_ref.add(log_data)
-                        # ----------------------------------------------------
+                if is_in_left and track_id not in ids_inside_left:
+                    ids_inside_left.add(track_id)
 
-                # Gambar bbox dan label
                 box_color = (0, 255, 0) if is_in_right or is_in_left else (0, 0, 255)
                 cv2.rectangle(annotated_frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), box_color, 2)
                 label = f"{class_names.get(cls_id)} ID:{track_id}"
                 cv2.putText(annotated_frame, label, (bbox[0], bbox[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 2)
             
-            # Bersihkan ID yang sudah tidak ada di poligon
             ids_inside_right.intersection_update(current_ids_in_frame)
             ids_inside_left.intersection_update(current_ids_in_frame)
+        
+        # ==================== BLOK OPTIMASI ====================
+        # 1. Perkecil ukuran frame agar lebih ringan untuk di-encode dan dikirim
+        target_width = 854
+        h, w, _ = annotated_frame.shape
+        if w > target_width: # Hanya resize jika frame lebih besar dari target
+            ratio = target_width / w
+            target_height = int(h * ratio)
+            frame_to_send = cv2.resize(annotated_frame, (target_width, target_height), interpolation=cv2.INTER_AREA)
+        else:
+            frame_to_send = annotated_frame
 
-        # Simpan frame yang sudah di-encode untuk dikirim ke web
+        # 2. Atur kualitas JPEG untuk mengurangi ukuran file
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 75] # Kualitas 75%
+        # ========================================================
+
         with lock:
-            _, buffer = cv2.imencode('.jpg', annotated_frame)
+            # Gunakan frame dan parameter yang sudah dioptimalkan
+            _, buffer = cv2.imencode('.jpg', frame_to_send, encode_param)
             output_frames[stream_id] = buffer.tobytes()
