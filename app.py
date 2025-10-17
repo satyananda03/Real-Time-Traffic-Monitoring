@@ -1,6 +1,6 @@
 from flask import Flask, render_template
 from flask_socketio import SocketIO
-from flask_ngrok import run_with_ngrok
+from pyngrok import ngrok, conf  # Menggunakan pyngrok secara langsung
 import threading
 import base64
 import numpy as np
@@ -8,12 +8,8 @@ from ultralytics import YOLO
 from stream_processor import process_stream
 
 app = Flask(__name__)
-run_with_ngrok(app)
-
-# --- PERBAIKAN DI SINI ---
-# Hapus async_mode='threading' agar SocketIO bisa auto-detect eventlet
+# Hapus run_with_ngrok(app)
 socketio = SocketIO(app)
-# -------------------------
 
 # --- Variabel Global ---
 output_frames = {}
@@ -64,6 +60,14 @@ def frame_generator():
         socketio.sleep(0.1)
 
 if __name__ == '__main__':
+    # Konfigurasi dan mulai Ngrok secara eksplisit
+    conf.get_default().region = "ap"  # Set region Asia Pasifik
+    NGROK_AUTHTOKEN = "PASTE_YOUR_AUTHTOKEN_HERE" # <-- GANTI DENGAN TOKEN ANDA
+    ngrok.set_auth_token(NGROK_AUTHTOKEN)
+    public_url = ngrok.connect(5000)
+    print(f"✅ Buka dashboard Anda di: {public_url}")
+
+    # Lanjutkan dengan memuat model dan memulai thread
     print("Memuat model YOLOv8...")
     model = YOLO("yolov8n.pt")
     model.fuse()
@@ -79,6 +83,5 @@ if __name__ == '__main__':
 
     socketio.start_background_task(target=frame_generator)
     
-    print("Menjalankan server Flask dengan Ngrok...")
-    # Dengan eventlet terinstal, ini akan otomatis menggunakan server yang benar
-    socketio.run(app, log_output=True)
+    print("Menjalankan server Flask-SocketIO...")
+    socketio.run(app, port=5000, log_output=False) # log_output=False agar tidak terlalu ramai
