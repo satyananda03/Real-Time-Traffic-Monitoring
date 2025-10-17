@@ -2,27 +2,45 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Traffic Monitoring Dashboard</title>
+    <title>Dashboard Monitoring Lalu Lintas</title>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <style>
         body { font-family: sans-serif; margin: 0; display: flex; height: 100vh; background-color: #f0f2f5; }
-        #sidebar { width: 250px; background-color: #2c3e50; color: white; padding: 20px; box-shadow: 2px 0 5px rgba(0,0,0,0.1); }
+        #sidebar { width: 250px; background-color: #2c3e50; color: white; padding: 20px; box-shadow: 2px 0 5px rgba(0,0,0,0.1); flex-shrink: 0; }
         #sidebar h2 { margin-top: 0; }
         #sidebar button {
-            display: block; width: 100%; padding: 10px; margin-bottom: 10px;
-            background-color: #3498db; color: white; border: none;
-            border-radius: 5px; cursor: pointer; font-size: 16px;
+            display: block; width: 100%; padding: 12px; margin-bottom: 10px; background-color: #3498db; color: white;
+            border: none; border-radius: 5px; cursor: pointer; font-size: 16px; text-align: left;
         }
         #sidebar button.active, #sidebar button:hover { background-color: #2980b9; }
-        #content { flex-grow: 1; padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        
+        #main-content { display: flex; flex-grow: 1; padding: 20px; gap: 20px; }
+        #content { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; }
+        
         #video-container {
-            max-width: 90%; max-height: 90%;
-            background-color: #000;
-            border: 2px solid #ccc;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            width: 100%; max-width: 1280px; background-color: #000;
+            border: 2px solid #ccc; box-shadow: 0 4px 8px rgba(0,0,0,0.2);
         }
         #video-feed { width: 100%; height: auto; display: block; }
         #stream-title { font-size: 24px; margin-bottom: 20px; color: #333; }
+        
+        /* --- CSS BARU UNTUK PANEL STATISTIK --- */
+        #stats-panel {
+            width: 300px;
+            background-color: #34495e;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            flex-shrink: 0;
+            height: fit-content;
+        }
+        #stats-panel h3 { margin-top: 0; border-bottom: 2px solid #7f8c8d; padding-bottom: 10px; }
+        .stats-group { margin-bottom: 20px; }
+        .stats-group p { display: flex; justify-content: space-between; margin: 8px 0; font-size: 16px; }
+        .stats-group p span:first-child { font-weight: bold; }
+        .stats-group .total { border-top: 1px solid #7f8c8d; padding-top: 8px; font-size: 18px; color: #2ecc71; }
+        /* -------------------------------------- */
     </style>
 </head>
 <body>
@@ -36,41 +54,89 @@
         {% endfor %}
     </div>
 
-    <div id="content">
-        <h2 id="stream-title">Memuat Stream...</h2>
-        <div id="video-container">
-            <img id="video-feed" src="" alt="Live Stream">
+    <div id="main-content">
+        <div id="content">
+            <h2 id="stream-title">Memuat Stream...</h2>
+            <div id="video-container">
+                <img id="video-feed" src="" alt="Live Stream">
+            </div>
         </div>
+
+        <!-- --- HTML BARU UNTUK PANEL STATISTIK --- -->
+        <div id="stats-panel">
+            <h3>Statistik Kendaraan</h3>
+            <div class="stats-group">
+                <h4>Arah Kanan</h4>
+                <p><span>Mobil:</span> <span id="count-right-car">0</span></p>
+                <p><span>Motor:</span> <span id="count-right-motor">0</span></p>
+                <p><span>Bus:</span> <span id="count-right-bus">0</span></p>
+                <p><span>Truk:</span> <span id="count-right-truck">0</span></p>
+                <p class="total"><span>TOTAL:</span> <span id="count-right-total">0</span></p>
+            </div>
+            <div class="stats-group">
+                <h4>Arah Kiri</h4>
+                <p><span>Mobil:</span> <span id="count-left-car">0</span></p>
+                <p><span>Motor:</span> <span id="count-left-motor">0</span></p>
+                <p><span>Bus:</span> <span id="count-left-bus">0</span></p>
+                <p><span>Truk:</span> <span id="count-left-truck">0</span></p>
+                <p class="total"><span>TOTAL:</span> <span id="count-left-total">0</span></p>
+            </div>
+        </div>
+        <!-- ----------------------------------------- -->
     </div>
 
     <script>
         const socket = io();
         let currentStreamId = null;
-        const streams = {{ streams|tojson }}; // Ambil data stream dari Flask
-        // Fungsi untuk memilih stream yang akan ditampilkan
+        const streams = {{ streams|tojson }};
+
         function selectStream(streamId, streamName) {
             console.log(`Beralih ke stream: ${streamId}`);
             currentStreamId = streamId;
             document.getElementById('stream-title').innerText = streamName;
-            document.querySelectorAll('#sidebar button').forEach(btn => {
-                btn.classList.remove('active');
-            });
+            document.querySelectorAll('#sidebar button').forEach(btn => btn.classList.remove('active'));
             document.getElementById(`btn-${streamId}`).classList.add('active');
+            
+            // Saat beralih stream, langsung minta data hitungan terbaru
+            // Ini akan memicu server mengirim data terakhir via listener 'connect'
+            // atau kita bisa memanggil update manual jika sudah ada data
         }
-        // Event listener untuk menerima frame dari server
+
         socket.on('update_frame', function(data) {
-            // Hanya update gambar jika stream yang diterima adalah yang sedang dipilih
             if (data.id === currentStreamId) {
-                const imageElem = document.getElementById('video-feed');
-                imageElem.src = 'data:image/jpeg;base64,' + data.image;
+                document.getElementById('video-feed').src = 'data:image/jpeg;base64,' + data.image;
             }
         });
-        // Pilih stream pertama sebagai default saat halaman dimuat
+
+        // --- JAVASCRIPT BARU UNTUK MENG-UPDATE HITUNGAN ---
+        socket.on('update_counts', function(allCounts) {
+            // Cek jika stream yang sedang aktif ada datanya
+            if (currentStreamId && allCounts[currentStreamId]) {
+                const counts = allCounts[currentStreamId];
+                
+                // Update Arah Kanan
+                document.getElementById('count-right-car').innerText = counts.right.Car;
+                document.getElementById('count-right-motor').innerText = counts.right.Motorcycle;
+                document.getElementById('count-right-bus').innerText = counts.right.Bus;
+                document.getElementById('count-right-truck').innerText = counts.right.Truck;
+                document.getElementById('count-right-total').innerText = counts.right.total;
+                
+                // Update Arah Kiri
+                document.getElementById('count-left-car').innerText = counts.left.Car;
+                document.getElementById('count-left-motor').innerText = counts.left.Motorcycle;
+                document.getElementById('count-left-bus').innerText = counts.left.Bus;
+                document.getElementById('count-left-truck').innerText = counts.left.Truck;
+                document.getElementById('count-left-total').innerText = counts.left.total;
+            }
+        });
+        // ----------------------------------------------------
+
         window.onload = function() {
             if (streams.length > 0) {
                 selectStream(streams[0].id, streams[0].name);
             }
         };
     </script>
+
 </body>
 </html>
