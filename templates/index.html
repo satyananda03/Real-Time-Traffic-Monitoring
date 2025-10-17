@@ -24,23 +24,16 @@
         #video-feed { width: 100%; height: auto; display: block; }
         #stream-title { font-size: 24px; margin-bottom: 20px; color: #333; }
         
-        /* --- CSS BARU UNTUK PANEL STATISTIK --- */
         #stats-panel {
-            width: 300px;
-            background-color: #34495e;
-            color: #ecf0f1;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-            flex-shrink: 0;
-            height: fit-content;
+            width: 300px; background-color: #34495e; color: #ecf0f1; padding: 15px;
+            border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            flex-shrink: 0; height: fit-content;
         }
         #stats-panel h3 { margin-top: 0; border-bottom: 2px solid #7f8c8d; padding-bottom: 10px; }
         .stats-group { margin-bottom: 20px; }
         .stats-group p { display: flex; justify-content: space-between; margin: 8px 0; font-size: 16px; }
         .stats-group p span:first-child { font-weight: bold; }
         .stats-group .total { border-top: 1px solid #7f8c8d; padding-top: 8px; font-size: 18px; color: #2ecc71; }
-        /* -------------------------------------- */
     </style>
 </head>
 <body>
@@ -62,7 +55,6 @@
             </div>
         </div>
 
-        <!-- --- HTML BARU UNTUK PANEL STATISTIK --- -->
         <div id="stats-panel">
             <h3>Statistik Kendaraan</h3>
             <div class="stats-group">
@@ -82,7 +74,6 @@
                 <p class="total"><span>TOTAL:</span> <span id="count-left-total">0</span></p>
             </div>
         </div>
-        <!-- ----------------------------------------- -->
     </div>
 
     <script>
@@ -90,29 +81,15 @@
         let currentStreamId = null;
         const streams = {{ streams|tojson }};
 
-        function selectStream(streamId, streamName) {
-            console.log(`Beralih ke stream: ${streamId}`);
-            currentStreamId = streamId;
-            document.getElementById('stream-title').innerText = streamName;
-            document.querySelectorAll('#sidebar button').forEach(btn => btn.classList.remove('active'));
-            document.getElementById(`btn-${streamId}`).classList.add('active');
-            
-            // Saat beralih stream, langsung minta data hitungan terbaru
-            // Ini akan memicu server mengirim data terakhir via listener 'connect'
-            // atau kita bisa memanggil update manual jika sudah ada data
-        }
+        // --- PERUBAHAN DIMULAI DI SINI ---
+        
+        // 1. VARIABEL BARU untuk menyimpan data hitungan terakhir
+        let latestCounts = {};
 
-        socket.on('update_frame', function(data) {
-            if (data.id === currentStreamId) {
-                document.getElementById('video-feed').src = 'data:image/jpeg;base64,' + data.image;
-            }
-        });
-
-        // --- JAVASCRIPT BARU UNTUK MENG-UPDATE HITUNGAN ---
-        socket.on('update_counts', function(allCounts) {
-            // Cek jika stream yang sedang aktif ada datanya
-            if (currentStreamId && allCounts[currentStreamId]) {
-                const counts = allCounts[currentStreamId];
+        // 2. FUNGSI BARU yang tugasnya HANYA mengupdate tampilan HTML
+        function updateStatsDisplay() {
+            if (currentStreamId && latestCounts[currentStreamId]) {
+                const counts = latestCounts[currentStreamId];
                 
                 // Update Arah Kanan
                 document.getElementById('count-right-car').innerText = counts.right.Car;
@@ -127,9 +104,35 @@
                 document.getElementById('count-left-bus').innerText = counts.left.Bus;
                 document.getElementById('count-left-truck').innerText = counts.left.Truck;
                 document.getElementById('count-left-total').innerText = counts.left.total;
+            } else {
+                // Jika tidak ada data, reset ke 0
+                document.querySelectorAll('#stats-panel span[id^="count-"]').forEach(el => el.innerText = '0');
+            }
+        }
+
+        function selectStream(streamId, streamName) {
+            currentStreamId = streamId;
+            document.getElementById('stream-title').innerText = streamName;
+            document.querySelectorAll('#sidebar button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`btn-${streamId}`).classList.add('active');
+            
+            // 3. PANGGIL FUNGSI UPDATE setelah beralih stream
+            updateStatsDisplay();
+        }
+
+        socket.on('update_frame', function(data) {
+            if (data.id === currentStreamId) {
+                document.getElementById('video-feed').src = 'data:image/jpeg;base64,' + data.image;
             }
         });
-        // ----------------------------------------------------
+
+        socket.on('update_counts', function(allCounts) {
+            // 4. Simpan data terbaru, lalu panggil fungsi update
+            latestCounts = allCounts;
+            updateStatsDisplay();
+        });
+
+        // --- AKHIR DARI PERUBAHAN ---
 
         window.onload = function() {
             if (streams.length > 0) {
