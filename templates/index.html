@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Traffic Monitoring Dashboard</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        body { font-family: sans-serif; margin: 0; display: flex; height: 100vh; background-color: #f0f2f5; }
+        #sidebar { width: 250px; background-color: #2c3e50; color: white; padding: 20px; box-shadow: 2px 0 5px rgba(0,0,0,0.1); }
+        #sidebar h2 { margin-top: 0; }
+        #sidebar button {
+            display: block; width: 100%; padding: 10px; margin-bottom: 10px;
+            background-color: #3498db; color: white; border: none;
+            border-radius: 5px; cursor: pointer; font-size: 16px;
+        }
+        #sidebar button.active, #sidebar button:hover { background-color: #2980b9; }
+        #content { flex-grow: 1; padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        #video-container {
+            max-width: 90%; max-height: 90%;
+            background-color: #000;
+            border: 2px solid #ccc;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        #video-feed { width: 100%; height: auto; display: block; }
+        #stream-title { font-size: 24px; margin-bottom: 20px; color: #333; }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <h2>Pilih Stream</h2>
+        {% for stream in streams %}
+            <button id="btn-{{ stream.id }}" onclick="selectStream('{{ stream.id }}', '{{ stream.name }}')">
+                {{ stream.name }}
+            </button>
+        {% endfor %}
+    </div>
+
+    <div id="content">
+        <h2 id="stream-title">Memuat Stream...</h2>
+        <div id="video-container">
+            <img id="video-feed" src="" alt="Live Stream">
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let currentStreamId = null;
+        const streams = {{ streams|tojson }}; // Ambil data stream dari Flask
+        // Fungsi untuk memilih stream yang akan ditampilkan
+        function selectStream(streamId, streamName) {
+            console.log(`Beralih ke stream: ${streamId}`);
+            currentStreamId = streamId;
+            document.getElementById('stream-title').innerText = streamName;
+            document.querySelectorAll('#sidebar button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById(`btn-${streamId}`).classList.add('active');
+        }
+        // Event listener untuk menerima frame dari server
+        socket.on('update_frame', function(data) {
+            // Hanya update gambar jika stream yang diterima adalah yang sedang dipilih
+            if (data.id === currentStreamId) {
+                const imageElem = document.getElementById('video-feed');
+                imageElem.src = 'data:image/jpeg;base64,' + data.image;
+            }
+        });
+        // Pilih stream pertama sebagai default saat halaman dimuat
+        window.onload = function() {
+            if (streams.length > 0) {
+                selectStream(streams[0].id, streams[0].name);
+            }
+        };
+    </script>
+</body>
+</html>
