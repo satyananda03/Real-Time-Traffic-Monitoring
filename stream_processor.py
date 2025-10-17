@@ -74,7 +74,7 @@ def process_stream(stream_config, model, output_frames, lock):
                     if track_id not in ids_inside_right:
                         ids_inside_right.add(track_id)
                         # --- DI SINI ANDA AKAN MENGIRIM DATA KE FIRESTORE ---
-                        print(f"[{stream_id}] MASUK KANAN: ID {track_id}, Tipe: {class_names.get(cls_id)}")
+                        # print(f"[{stream_id}] MASUK KANAN: ID {track_id}, Tipe: {class_names.get(cls_id)}")
                         # log_data = {
                         #     "timestamp": firestore.SERVER_TIMESTAMP,
                         #     "location_id": stream_id,
@@ -90,7 +90,7 @@ def process_stream(stream_config, model, output_frames, lock):
                     if track_id not in ids_inside_left:
                         ids_inside_left.add(track_id)
                         # --- DI SINI ANDA AKAN MENGIRIM DATA KE FIRESTORE ---
-                        print(f"[{stream_id}] MASUK KIRI: ID {track_id}, Tipe: {class_names.get(cls_id)}")
+                        # print(f"[{stream_id}] MASUK KIRI: ID {track_id}, Tipe: {class_names.get(cls_id)}")
                         # log_data = { ... }
                         # collection_ref.add(log_data)
                         # ----------------------------------------------------
